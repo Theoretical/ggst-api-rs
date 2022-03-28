@@ -84,7 +84,7 @@ pub async fn get_replays<A, B, C, D, E>(
                 player_id: "211027113123008384".into(),
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
-                version: "0.1.0".into(),
+                version: "0.1.1".into(),
                 platform: messagepack::Platform::PC,
             },
             body: messagepack::RequestBody {
