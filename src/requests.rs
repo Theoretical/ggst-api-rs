@@ -29,6 +29,25 @@ impl Context {
     }
 }
 
+#[derive(PartialEq, Eq, Copy, Clone, Serialize, Deserialize)]
+#[serde(crate = "serde_crate")]
+pub struct Platform(u8);
+
+impl fmt::Debug for Platform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::PC => "PC".fmt(f),
+            Self::PLAYSTATION => "Playstation".fmt(f),
+            Self(x) => f.debug_tuple("Platform").field(&x).finish(),
+        }
+    }
+}
+
+impl Platform {
+    pub const PC: Platform = Platform(3);
+    pub const PLAYSTATION: Platform = Platform(1);
+}
+
 fn id_from_bytes(bytes: &[u8]) -> Result<i64> {
     let s =
         str::from_utf8(bytes).map_err(|_| Error::ParsingBytesError("could not parse userid"))?;
@@ -44,6 +63,7 @@ fn id_from_bytes(bytes: &[u8]) -> Result<i64> {
 /// filter on the current time before using any matches, like `.filter(|m| m.timestamp() < &chrono::Utc::now())`
 pub async fn get_replays<A, B, C, D, E>(
     context: &Context,
+    platform: Platform,
     pages: usize,
     replays_per_page: usize,
     request_parameters: QueryParameters<A, B, C, D, E>,
@@ -85,7 +105,7 @@ pub async fn get_replays<A, B, C, D, E>(
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.1".into(),
-                platform: messagepack::Platform::PC,
+                platform,
             },
             body: messagepack::RequestBody {
                 int1: 1,
@@ -266,25 +286,6 @@ mod messagepack {
     pub struct Response<T> {
         pub header: ResponseHeader,
         pub body: T,
-    }
-
-    #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
-    #[serde(crate = "serde_crate")]
-    pub struct Platform(u8);
-
-    impl fmt::Debug for Platform {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match *self {
-                Self::PC => "PC".fmt(f),
-                Self::PLAYSTATION => "Playstation".fmt(f),
-                Self(x) => f.debug_tuple("Platform").field(&x).finish(),
-            }
-        }
-    }
-
-    impl Platform {
-        pub const PC: Platform = Platform(3);
-        pub const PLAYSTATION: Platform = Platform(1);
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -701,7 +702,7 @@ mod tests {
                 string2: "61a5ed4f461c2".into(),
                 int1: 2,
                 version: "0.1.0".into(),
-                platform: messagepack::Platform::PC,
+                platform: Platform::PC,
             },
             body: RequestBody {
                 int1: 1,
