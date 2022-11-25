@@ -135,6 +135,7 @@ pub enum Character {
     Baiken,
     Testament,
     Bridget,
+    Sin,
 }
 
 impl fmt::Display for Character {
@@ -161,6 +162,7 @@ impl fmt::Display for Character {
             Character::Baiken => write!(f, "Baiken"),
             Character::Testament => write!(f, "Testament"),
             Character::Bridget => write!(f, "Bridget"),
+            Character::Sin => write!(f, "Sin"),
         }
     }
 }
@@ -194,6 +196,7 @@ impl Character {
             0x12 => Ok(Character::Baiken),
             0x13 => Ok(Character::Testament),
             0x14 => Ok(Character::Bridget),
+            0x15 => Ok(Character::Sin),
             _ => Err(Error::InvalidArgument(format!(
                 "{:x} is not a valid character code",
                 c
@@ -229,6 +232,7 @@ impl Character {
             Character::Baiken => 0x12,
             Character::Testament => 0x13,
             Character::Bridget => 0x14,
+            Character::Sin => 0x15,
         }
     }
 }
