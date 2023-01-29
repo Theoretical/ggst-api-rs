@@ -1,11 +1,64 @@
 use crate::{error::*, *};
+extern crate base64_url;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use reqwest::{self, header};
 use std::collections::BTreeSet;
 use std::str;
+use std::{io, io::Write};
+
+use aes_gcm::{
+    aead::{AeadInPlace, KeyInit, OsRng},
+    Aes256Gcm, Nonce, Key
+};
+use cipher::{
+    generic_array::{ArrayLength, GenericArray},
+};
+use rand;
+use aes_gcm::aead::Aead;
 
 const DEFAULT_BASE_URL: &str = "https://ggst-game.guiltygear.com";
+const GGST_KEY: &str = "EEBC1F57487F51921C0465665F8AE6D1658BB26DE6F8A069A3520293A572078F";
+
+
+/// GGST AES Encryption
+fn encrypt(msg: Vec<u8>) -> Vec<u8> {
+    let keySlice = hex::decode(GGST_KEY);
+    let kd = keySlice.unwrap();
+    let key: &Key<Aes256Gcm> = kd.as_slice().into();
+
+    let cipher = Aes256Gcm::new(&key);
+    let values: [u8; 12] = rand::random();
+
+    let nonce = Nonce::from_slice(&values);
+    let mut buffer1: Vec<u8> = Vec::new();
+    buffer1.extend_from_slice(&msg);
+
+    let output = cipher.encrypt_in_place(&nonce, b"", &mut buffer1);
+
+    let mut buffer: Vec<u8> = Vec::new();
+    buffer.extend_from_slice(&nonce);
+    buffer.extend_from_slice(&buffer1);
+
+    return buffer;
+}
+
+fn decrypt(data: Vec<u8>) -> Vec<u8> {
+    let keySlice = hex::decode(GGST_KEY);
+    let kd = keySlice.unwrap();
+    let key: &Key<Aes256Gcm> = kd.as_slice().into();
+
+    let cipher = Aes256Gcm::new(&key);
+    let nonce = Nonce::from_slice(&data[0..12]);
+    let msg = &data[12..data.len()];
+
+    let mut buffer: Vec<u8> = Vec::new();
+    buffer.extend_from_slice(msg);
+
+    cipher.decrypt_in_place(&nonce, b"", &mut buffer);
+
+    return buffer;
+}
 
 /// Context struct which contains the base urls used for api requests. Use the associated methods
 /// to overwrite urls if necessary.
@@ -101,10 +154,10 @@ pub async fn get_replays<A, B, C, D, E>(
         // Construct the query string
         let request = messagepack::ReplayRequest {
             header: messagepack::RequestHeader {
-                player_id: "211027113123008384".into(),
-                string2: "61a5ed4f461c2".into(),
+                player_id: "230129212655563979".into(),
+                string2: "63d6e9727078b".into(),
                 int1: 2,
-                version: "0.1.6".into(),
+                version: "0.1.7".into(),
                 platform,
             },
             body: messagepack::RequestBody {
@@ -112,13 +165,16 @@ pub async fn get_replays<A, B, C, D, E>(
                 index: i,
                 replays_per_page,
                 query: messagepack::RequestQuery::from(&request_parameters),
+                int2: 6
             },
         };
         match api_request(&client, &context.base_url, request).await? {
             Ok(response) => {
+                println!("success");
                 parse_response(&mut matches, &mut errors, response);
             }
             Err(err) => {
+                println!("error {}", err);
                 errors.push(err);
             }
         }
@@ -135,18 +191,29 @@ where
     T: messagepack::ApiRequest,
     for<'de> U: Deserialize<'de>,
 {
+    let decoded = rmp_serde::encode::to_vec(&request).unwrap();
+    let data = encrypt(decoded);
+
+    let b64 = base64_url::encode(&data);
+    println!("{}", b64);
     let response = client
         .post(String::from(base_url) + T::PATH)
-        .header(header::USER_AGENT, "Steam")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .form(&[("data", request.to_hex())])
+        .header(header::USER_AGENT, "GGST/Steam")
+        .header(header::CACHE_CONTROL, "no-store")
+        .header("x-client-version", "1")
+        .form(&[("data", b64)])
         .send()
         .await?;
 
     // Convert the response to raw bytes
     let bytes = response.bytes().await?;
-    Ok(rmp_serde::decode::from_slice(&bytes)
-        .map_err(|e| ParseError::new(show_buf(&bytes), e.into())))
+    let mut buffer: Vec<u8> = Vec::new();
+    buffer.extend_from_slice(&bytes);
+
+    let decrypted = decrypt(buffer);;
+
+    Ok(rmp_serde::decode::from_slice(&decrypted)
+        .map_err(|e| ParseError::new(show_buf(&decrypted), e.into())))
 }
 
 fn parse_response(
@@ -310,13 +377,14 @@ mod messagepack {
         pub index: usize,
         pub replays_per_page: usize,
         pub query: RequestQuery,
+        pub int2: UnknownInteger
     }
 
     impl<A, B, C, D, E> From<&QueryParameters<A, B, C, D, E>> for RequestQuery {
         fn from(query: &QueryParameters<A, B, C, D, E>) -> Self {
             RequestQuery {
                 int1: -1,
-                player_search: PlayerSearch::All,
+                player_search: 0,
                 min_floor: query.min_floor,
                 max_floor: query.max_floor,
                 seq: vec![],
@@ -356,7 +424,7 @@ mod messagepack {
     #[serde(crate = "serde_crate")]
     pub struct RequestQuery {
         pub int1: UnknownInteger,
-        pub player_search: PlayerSearch,
+        pub player_search: UnknownInteger,
         #[serde(with = "floor")]
         pub min_floor: Floor,
         #[serde(with = "floor")]
@@ -707,7 +775,7 @@ mod tests {
             body: RequestBody {
                 int1: 1,
                 index: 0,
-                replays_per_page: 127,
+                replays_per_page: 10,
                 query: RequestQuery {
                     int1: -1,
                     player_search: PlayerSearch::All,
